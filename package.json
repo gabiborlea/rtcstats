@@ -1,6 +1,6 @@
 {
   "name": "@jitsi/rtcstats",
-  "version": "9.0.1",
+  "version": "9.1.0",
   "description": "gather WebRTC API traces and statistics",
   "main": "rtcstats.js",
   "dependencies": {
@@ -11,7 +11,7 @@
   "devDependencies": {
     "@jitsi/eslint-config": "^4.1.1",
     "eslint": "8.1.0",
-    "eslint-plugin-import": "^2.25.2"
+    "eslint-plugin-import": "2.25.2"
   },
   "scripts": {
     "lint": "eslint rtcstats.js trace-ws.js"
