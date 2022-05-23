@@ -1,6 +1,6 @@
 /* eslint-disable prefer-rest-params */
 /* eslint-disable no-param-reassign */
-import { BrowserDetection } from '@jitsi/js-utils';
+import { BrowserDetection } from '@jitsi/js-utils/browser-detection';
 
 /**
  * transforms a maplike to an object. Mostly for getStats + JSON.parse(JSON.stringify())
