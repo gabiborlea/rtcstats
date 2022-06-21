@@ -11,7 +11,7 @@ const PROTOCOL_ITERATION = '3.1';
  * @param {*} onCloseCallback
  * @param {*} pingInterval
  */
-export default function({ endpoint, onCloseCallback, useLegacy, obfuscate = true, pingInterval = 30000 }) {
+export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfuscate = true, pingInterval = 30000 }) {
     const buffer = [];
     const statsSessionId = uuidv4();
     let connection;
@@ -86,7 +86,7 @@ export default function({ endpoint, onCloseCallback, useLegacy, obfuscate = true
         if (connection) {
             connection.close();
         }
-        connection = new WebSocket(endpoint + window.location.pathname, protocolVersion);
+        connection = new WebSocket(`${endpoint}/${meetingFqn}`, protocolVersion);
 
         connection.onclose = function(closeEvent) {
             keepAliveInterval && clearInterval(keepAliveInterval);

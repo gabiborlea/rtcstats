@@ -143,9 +143,10 @@ export default function(
     const isSafari = browserDetection.isSafari();
     const isChrome = browserDetection.isChrome();
     const isElectron = browserDetection.isElectron();
+    const isReactNative = browserDetection.isReactNative();
 
     // Only initialize rtcstats if it's run in a supported browser
-    if (!(isFirefox || isSafari || isChrome || isElectron)) {
+    if (!(isFirefox || isSafari || isChrome || isElectron || isReactNative)) {
         throw new Error('RTCStats unsupported browser.');
     }
 
@@ -247,7 +248,7 @@ export default function(
                 let prev = {};
 
                 const getStats = function() {
-                    if (isFirefox || isSafari || ((isChrome || isElectron) && !useLegacy)) {
+                    if (isFirefox || isSafari || isReactNative || ((isChrome || isElectron) && !useLegacy)) {
                         pc.getStats(null).then(res => {
                             const now = map2obj(res);
                             const base = JSON.parse(JSON.stringify(now)); // our new prev
@@ -499,21 +500,21 @@ export default function(
                             }
 
                             if (!this.__dtlsTransport && method.endsWith('Description')) {
-                                this.getSenders().forEach(sender => {
-                                    if (!this.__dtlsTransport && sender.transport) {
-                                        this.__dtlsTransport = sender.transport;
+                                // this.getSenders().forEach(sender => {
+                                //     if (!this.__dtlsTransport && sender.transport) {
+                                //         this.__dtlsTransport = sender.transport;
 
-                                        sender.transport.addEventListener('error', error => {
-                                            sendStatsEntry('ondtlserror', rtcStatsId, error);
-                                        });
+                                //         sender.transport.addEventListener('error', error => {
+                                //             sendStatsEntry('ondtlserror', rtcStatsId, error);
+                                //         });
 
-                                        sender.transport.addEventListener('statechange', () => {
-                                            const newstate = sender.transport.state;
+                                //         sender.transport.addEventListener('statechange', () => {
+                                //             const newstate = sender.transport.state;
 
-                                            sendStatsEntry('ondtlsstatechange', rtcStatsId, newstate);
-                                        });
-                                    }
-                                });
+                                //             sendStatsEntry('ondtlsstatechange', rtcStatsId, newstate);
+                                //         });
+                                //     }
+                                // });
                             }
 
                             // We can't safely bypass this part of logic because it's necessary for
