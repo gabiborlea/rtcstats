@@ -286,7 +286,7 @@ export default function(
                 }
 
                 pc.addEventListener('connectionstatechange', () => {
-                    if (['connected', 'failed'].includes(pc.connectionState)) {
+                    if ([ 'connected', 'failed' ].includes(pc.connectionState)) {
                         getStats();
                     }
                 });
@@ -499,22 +499,22 @@ export default function(
                                 console.error(`RTCStats ${method} promise success bind failed: `, error);
                             }
 
-                            if (!this.__dtlsTransport && method.endsWith('Description')) {
-                                // this.getSenders().forEach(sender => {
-                                //     if (!this.__dtlsTransport && sender.transport) {
-                                //         this.__dtlsTransport = sender.transport;
+                            if (!this.__dtlsTransport && method.endsWith('Description') && !isReactNative) {
+                                this.getSenders().forEach(sender => {
+                                    if (!this.__dtlsTransport && sender.transport) {
+                                        this.__dtlsTransport = sender.transport;
 
-                                //         sender.transport.addEventListener('error', error => {
-                                //             sendStatsEntry('ondtlserror', rtcStatsId, error);
-                                //         });
+                                        sender.transport.addEventListener('error', error => {
+                                            sendStatsEntry('ondtlserror', rtcStatsId, error);
+                                        });
 
-                                //         sender.transport.addEventListener('statechange', () => {
-                                //             const newstate = sender.transport.state;
+                                        sender.transport.addEventListener('statechange', () => {
+                                            const newstate = sender.transport.state;
 
-                                //             sendStatsEntry('ondtlsstatechange', rtcStatsId, newstate);
-                                //         });
-                                //     }
-                                // });
+                                            sendStatsEntry('ondtlsstatechange', rtcStatsId, newstate);
+                                        });
+                                    }
+                                });
                             }
 
                             // We can't safely bypass this part of logic because it's necessary for
