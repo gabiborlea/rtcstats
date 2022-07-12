@@ -276,7 +276,7 @@ export default function(
                 //    we have to collect results anyway so...
                 if (pollInterval) {
                     const interval = window.setInterval(() => {
-                        if (pc.signalingState === 'closed') {
+                        if (pc.signalingState === 'closed' || pc.iceConnectionState === 'closed') {
                             window.clearInterval(interval);
 
                             return;

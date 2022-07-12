@@ -86,7 +86,13 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
         if (connection) {
             connection.close();
         }
-        connection = new WebSocket(`${endpoint}/${meetingFqn}`, protocolVersion);
+
+        connection = new WebSocket(
+            `${endpoint}/${meetingFqn}`,
+            protocolVersion,
+            { headers: { 'User-Agent': navigator.userAgent } }
+        );
+
 
         connection.onclose = function(closeEvent) {
             keepAliveInterval && clearInterval(keepAliveInterval);
