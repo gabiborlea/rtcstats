@@ -4,6 +4,10 @@ import { v4 as uuidv4 } from 'uuid';
 import obfuscator from './obfuscator';
 
 const PROTOCOL_ITERATION = '3.1';
+let statsSessionId;
+
+// Parent stats session id, used when breakout rooms occur to keep track of the initial stats session id.
+let parentStatsSessionId;
 
 /**
  *
@@ -13,7 +17,8 @@ const PROTOCOL_ITERATION = '3.1';
  */
 export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfuscate = true, pingInterval = 30000 }) {
     const buffer = [];
-    const statsSessionId = uuidv4();
+
+    statsSessionId = uuidv4();
     let connection;
     let keepAliveInterval;
 
@@ -38,8 +43,20 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     };
 
     trace.identity = function(...data) {
-
         data.push(new Date().getTime());
+
+        if (data.length > 2 && data[2]?.isBreakoutRoom && !parentStatsSessionId) {
+            parentStatsSessionId = statsSessionId;
+        }
+
+        if (parentStatsSessionId) {
+            statsSessionId = uuidv4();
+
+            if (data.length > 2) {
+                data[2].parentStatsSessionId = parentStatsSessionId;
+            }
+        }
+
 
         const identityMsg = {
             statsSessionId,
