@@ -37,18 +37,6 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
         }
     };
 
-    trace.isConnected = function() {
-        const { readyState } = connection;
-
-        return readyState === WebSocket.OPEN;
-    };
-
-    trace.isClosed = function() {
-        const { readyState } = connection;
-
-        return readyState === WebSocket.CLOSED;
-    };
-
     trace.identity = function(...data) {
         data.push(new Date().getTime());
 
@@ -108,8 +96,8 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
         trace(keepaliveMsg);
     };
 
-    trace.close = function() {
-        connection && connection.close();
+    trace.close = function(reason) {
+        connection && connection.close(3001, reason);
     };
 
     trace.connect = function(isBreakoutRoom) {
@@ -140,8 +128,18 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
             keepAliveInterval && clearInterval(keepAliveInterval);
 
             // reconnect?
+
             onCloseCallback({ code: closeEvent.code,
                 reason: closeEvent.reason });
+
+            if (closeEvent.code === 3001 && closeEvent.reason === 'CONFERENCE_LEAVE') {
+                return;
+            }
+
+            setTimeout(() => {
+                trace.connect(isBreakoutRoom);
+            }, 1000);
+
         };
 
         connection.onopen = function() {
