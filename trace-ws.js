@@ -4,6 +4,16 @@ import { v4 as uuidv4 } from 'uuid';
 import obfuscator from './obfuscator';
 
 const PROTOCOL_ITERATION = '3.1';
+const MAX_RECONNECT_ATTEMPTS = 100;
+
+/**
+ *
+ * @param {*} reconnectAttempts
+ * @returns
+ */
+function getTimeout(reconnectAttempts) {
+    return ((2 ** reconnectAttempts) * 1000) + Math.floor(Math.random() * 1000);
+}
 
 /**
  *
@@ -18,6 +28,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     let statsSessionId = uuidv4();
     let connection;
     let keepAliveInterval;
+    let reconnectAttempts;
 
     // We maintain support for legacy chrome rtcstats just in case we need some critical statistic
     // only obtainable from that format, ideally we'd remove this in the future.
@@ -137,14 +148,19 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
             }
 
             setTimeout(() => {
-                trace.connect(isBreakoutRoom);
-            }, 1000);
+                reconnectAttempts++;
+
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    trace.connect(isBreakoutRoom);
+                }
+            }, getTimeout(reconnectAttempts));
 
         };
 
         connection.onopen = function() {
             keepAliveInterval = setInterval(trace.keepAlive, pingInterval);
             buffer = buffer.map(entry => JSON.stringify(entry));
+            reconnectAttempts = 0;
 
             while (buffer.length) {
                 // Buffer contains serialized msg's so no need to stringify
