@@ -5,6 +5,9 @@ import obfuscator from './obfuscator';
 
 const PROTOCOL_ITERATION = '3.1';
 const MAX_RECONNECT_ATTEMPTS = 100;
+const messageTypes = {
+    SequenceNumber: 'sn'
+};
 
 /**
  *
@@ -29,6 +32,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     let connection;
     let keepAliveInterval;
     let reconnectAttempts;
+    let sequenceNumber = 1;
 
     // We maintain support for legacy chrome rtcstats just in case we need some critical statistic
     // only obtainable from that format, ideally we'd remove this in the future.
@@ -37,19 +41,13 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     const trace = function(msg) {
         if (connection && (connection.readyState === WebSocket.OPEN)) {
             connection.send(JSON.stringify(msg));
-        } else if (connection && (connection.readyState >= WebSocket.CLOSING)) {
-            // no-op
-        } else if (buffer.length < 300) {
-            // We need to cache the initial getStats calls as they are used by the delta compression algorithm and
-            // without the data from the initial calls the server wouldn't know how to decompress.
-            // Ideally we wouldn't reach this limit as the connect should fairly soon after the PC init, but just
-            // in case add a limit to the buffer, so we don't transform this into a memory leek.
-            buffer.push(msg);
         }
+        buffer.push(msg);
     };
 
     trace.identity = function(...data) {
         data.push(new Date().getTime());
+        data.push(sequenceNumber++);
 
         if (parentStatsSessionId) {
             data[2].parentStatsSessionId = parentStatsSessionId;
@@ -87,6 +85,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
         }
 
         myData.push(new Date().getTime());
+        myData.push(sequenceNumber++);
 
         const statsEntryMsg = {
             statsSessionId,
@@ -107,8 +106,8 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
         trace(keepaliveMsg);
     };
 
-    trace.close = function(reason) {
-        connection && connection.close(3001, reason);
+    trace.close = function() {
+        connection && connection.close(3001);
     };
 
     trace.connect = function(isBreakoutRoom) {
@@ -129,7 +128,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
         }
 
         connection = new WebSocket(
-            `${endpoint}/${meetingFqn}`,
+            `${endpoint}/${meetingFqn}?statsSessionId=${statsSessionId}`,
             protocolVersion,
             { headers: { 'User-Agent': navigator.userAgent } }
         );
@@ -143,7 +142,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
             onCloseCallback({ code: closeEvent.code,
                 reason: closeEvent.reason });
 
-            if (closeEvent.code === 3001 && closeEvent.reason === 'CONFERENCE_LEAVE') {
+            if (closeEvent.code === 3001) {
                 return;
             }
 
@@ -162,17 +161,17 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
             buffer = buffer.map(entry => JSON.stringify(entry));
             reconnectAttempts = 0;
 
-            while (buffer.length) {
-                // Buffer contains serialized msg's so no need to stringify
-                connection.send(buffer.shift());
-            }
+            buffer.forEach(entry => connection.send(entry));
         };
 
-    /*
-    connection.onmessage = function(msg) {
-      // no messages from the server defined yet.
-    };
-    */
+        connection.onmessage = function(msg) {
+            const { data: { type, body } } = msg;
+
+            if (type === messageTypes.SequenceNumber && body && typeof body === 'number') {
+                buffer = buffer.filter(entry => entry[4] > body);
+            }
+
+        };
     };
 
     return trace;
