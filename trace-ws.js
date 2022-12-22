@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { PROTOCOL_ITERATION, MAX_RECONNECT_ATTEMPTS, messageTypes, CONFERENCE_LEAVE_CODE } from './constants';
 import obfuscator from './obfuscator';
 
-
 /**
  *
  * @param {*} reconnectAttempts
@@ -148,7 +147,6 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
                     trace.connect(isBreakoutRoom);
                 }
             }, getTimeout(reconnectAttempts));
-
         };
 
         connection.onopen = function() {
@@ -174,7 +172,6 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
                     return false;
                 });
             }
-
         };
     };
 
