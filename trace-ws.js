@@ -1,13 +1,9 @@
 /* eslint-disable prefer-rest-params */
 import { v4 as uuidv4 } from 'uuid';
 
+import { PROTOCOL_ITERATION, MAX_RECONNECT_ATTEMPTS, messageTypes, CONFERENCE_LEAVE_CODE } from './constants';
 import obfuscator from './obfuscator';
 
-const PROTOCOL_ITERATION = '3.1';
-const MAX_RECONNECT_ATTEMPTS = 100;
-const messageTypes = {
-    SequenceNumber: 'sn'
-};
 
 /**
  *
@@ -27,12 +23,17 @@ function getTimeout(reconnectAttempts) {
 export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfuscate = true, pingInterval = 30000 }) {
     // Parent stats session id, used when breakout rooms occur to keep track of the initial stats session id.
     let parentStatsSessionId;
+
+    // Buffer for storing stats if there is no connection to the server.
     let buffer = [];
     let statsSessionId = uuidv4();
     let connection;
     let keepAliveInterval;
-    let reconnectAttempts;
+    let reconnectAttempts = 0;
+
+    // The index of the last stats that the server received.
     let sequenceNumber = 1;
+    let reconnectTimeout;
 
     // We maintain support for legacy chrome rtcstats just in case we need some critical statistic
     // only obtainable from that format, ideally we'd remove this in the future.
@@ -107,13 +108,10 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     };
 
     trace.close = function() {
-        connection && connection.close(3001);
+        connection && connection.close(CONFERENCE_LEAVE_CODE);
     };
 
     trace.connect = function(isBreakoutRoom) {
-    // Because the connect function can be deferred now, we don't want to clear the buffer on connect so that
-    // we don't lose queued up operations.
-    // buffer = [];
         if (isBreakoutRoom && !parentStatsSessionId) {
             parentStatsSessionId = statsSessionId;
         }
@@ -133,20 +131,17 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
             { headers: { 'User-Agent': navigator.userAgent } }
         );
 
-
         connection.onclose = function(closeEvent) {
             keepAliveInterval && clearInterval(keepAliveInterval);
-
-            // reconnect?
 
             onCloseCallback({ code: closeEvent.code,
                 reason: closeEvent.reason });
 
-            if (closeEvent.code === 3001) {
+            // Do not try to reconnect if connection was closed intentionally.
+            if (closeEvent.code === CONFERENCE_LEAVE_CODE) {
                 return;
             }
-
-            setTimeout(() => {
+            reconnectTimeout = setTimeout(() => {
                 reconnectAttempts++;
 
                 if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
@@ -158,17 +153,26 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
 
         connection.onopen = function() {
             keepAliveInterval = setInterval(trace.keepAlive, pingInterval);
-            buffer = buffer.map(entry => JSON.stringify(entry));
+            reconnectTimeout && clearTimeout(reconnectTimeout);
             reconnectAttempts = 0;
 
-            buffer.forEach(entry => connection.send(entry));
+            buffer.forEach(entry => connection.send(JSON.stringify(entry)));
         };
 
         connection.onmessage = function(msg) {
-            const { data: { type, body } } = msg;
+            const { type, body } = JSON.parse(msg.data);
 
             if (type === messageTypes.SequenceNumber && body && typeof body === 'number') {
-                buffer = buffer.filter(entry => entry[4] > body);
+                buffer = buffer.filter(entry => {
+                    const { data } = entry;
+                    const jsonData = Array.isArray(data) ? data : JSON.parse(data);
+
+                    if (jsonData[4] > body) {
+                        return true;
+                    }
+
+                    return false;
+                });
             }
 
         };
