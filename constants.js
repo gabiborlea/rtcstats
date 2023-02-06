@@ -6,4 +6,6 @@ export const messageTypes = {
     SequenceNumber: 'sn'
 };
 export const CONFERENCE_LEAVE_CODE = 3001;
+export const DUMP_ERROR_CODE = 3002;
+export const CUSTOM_ERROR_CODES = [ CONFERENCE_LEAVE_CODE, DUMP_ERROR_CODE ];
 export const BUFFER_LIMIT = 1000;

@@ -6,7 +6,9 @@ import {
     MAX_RECONNECT_ATTEMPTS,
     messageTypes,
     CONFERENCE_LEAVE_CODE,
-    BUFFER_LIMIT
+    BUFFER_LIMIT,
+    CUSTOM_ERROR_CODES,
+    DUMP_ERROR_CODE
 } from './constants';
 import obfuscator from './obfuscator';
 
@@ -35,35 +37,45 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     let statsSessionId = uuidv4();
     let connection;
     let keepAliveInterval;
+
+    // the number of reconnect attempts, it will be restored to 0 when then connection is reestablished.
     let reconnectAttempts = 0;
 
-    // The index of the last stat.
+    // flag indicating if data can be sent to the server.
+    let canSendMessage = false;
+
+    // The sequence number of the last stat.
     let sequenceNumber = 1;
+
+    // Timeout time for the reconnect protocol.
     let reconnectTimeout;
 
     // We maintain support for legacy chrome rtcstats just in case we need some critical statistic
     // only obtainable from that format, ideally we'd remove this in the future.
     const protocolVersion = useLegacy ? `${PROTOCOL_ITERATION}_LEGACY` : `${PROTOCOL_ITERATION}_STANDARD`;
 
-    const setDataParams = data => {
+    // Function setting the timestamp and the sequence number of the entry.
+    const setTransportParams = data => {
         data.push(new Date().getTime());
         data.push(sequenceNumber++);
     };
 
+    // Function sending the message to the server if there is a connection.
     const sendMessage = async msg => {
+        // It creates a copy of the message so that the message from the buffer have the data attribute unstringlified
         const copyMsg = Object.assign({}, msg);
 
         if (copyMsg.type !== 'identity' && copyMsg.data) {
             copyMsg.data = JSON.stringify(copyMsg.data);
         }
-        if (connection && (connection.readyState === WebSocket.OPEN)) {
+        if (connection && (connection.readyState === WebSocket.OPEN) && canSendMessage) {
             connection.send(JSON.stringify(copyMsg));
         }
     };
 
     const trace = function(msg) {
         sendMessage(msg);
-        if (buffer.length < BUFFER_LIMIT) {
+        if (buffer.length < BUFFER_LIMIT && msg.data) {
             buffer.push(msg);
         }
     };
@@ -81,7 +93,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     };
 
     trace.identity = function(...data) {
-        setDataParams(data);
+        setTransportParams(data);
 
         if (parentStatsSessionId) {
             data[2].parentStatsSessionId = parentStatsSessionId;
@@ -116,7 +128,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
             // Obfuscate the ips is required.
             obfuscator(myData);
         }
-        setDataParams(myData);
+        setTransportParams(myData);
 
         const statsEntryMsg = {
             statsSessionId,
@@ -163,12 +175,13 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
 
         connection.onclose = function(closeEvent) {
             keepAliveInterval && clearInterval(keepAliveInterval);
+            canSendMessage && (canSendMessage = false);
 
             onCloseCallback({ code: closeEvent.code,
                 reason: closeEvent.reason });
 
             // Do not try to reconnect if connection was closed intentionally.
-            if (closeEvent.code === CONFERENCE_LEAVE_CODE) {
+            if (CUSTOM_ERROR_CODES.includes(closeEvent.code)) {
                 return;
             }
             reconnectTimeout = setTimeout(() => {
@@ -187,22 +200,32 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
         connection.onmessage = function(msg) {
             const { type, body } = JSON.parse(msg.data);
 
+            // if the server sends back the last sequence number that it has been received.
             if (type === messageTypes.SequenceNumber) {
                 const { value, state } = body;
 
-                buffer = buffer.filter(entry => {
-                    const { data } = entry;
+                // if there are entries in the buffer
+                if (buffer.length) {
+                    const firstSN = buffer[0].data[4];
+                    const lastSN = buffer[buffer.length - 1].data[4];
 
-                    if (data[4] > value) {
-                        return true;
+                    // messages would not be in order, some messages might be missing
+                    if (value < firstSN - 1 && value > lastSN) {
+                        connection && connection.close(DUMP_ERROR_CODE);
+
+                        return;
                     }
 
-                    return false;
-                });
+                    const lastReceivedSNIndex = buffer.findIndex(statsEntry => statsEntry.data[4] === value);
 
+                    buffer = buffer.slice(lastReceivedSNIndex + 1);
+                }
+
+                // this happens when the connection is established
                 if (state === 'initial') {
                     reconnectTimeout && clearTimeout(reconnectTimeout);
                     reconnectAttempts = 0;
+                    canSendMessage = true;
                     buffer.forEach(entry => sendMessage(entry));
                 }
             }
