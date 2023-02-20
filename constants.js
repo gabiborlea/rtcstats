@@ -1,7 +1,7 @@
 export const PROTOCOL_ITERATION = '3.1';
 
-// this will allow the client to reconnect for maximum 8.5 minutes and maximum 11.5 minutes
-export const MAX_RECONNECT_ATTEMPTS = 8;
+// the maximum number of ms allowed for the client to try reconnect
+export const MAX_RECONNECT_TIME = 600000;
 export const messageTypes = {
     SequenceNumber: 'sn'
 };

@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import {
     PROTOCOL_ITERATION,
-    MAX_RECONNECT_ATTEMPTS,
+    MAX_RECONNECT_TIME,
     messageTypes,
     CONFERENCE_LEAVE_CODE,
     BUFFER_LIMIT,
@@ -38,8 +38,8 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     let connection;
     let keepAliveInterval;
 
-    // the number of reconnect attempts, it will be restored to 0 when then connection is reestablished.
-    let reconnectAttempts = 0;
+    // the number of ms spent trying to reconnect to the server.
+    let reconnectSpentTime = 0;
 
     // flag indicating if data can be sent to the server.
     let canSendMessage = false;
@@ -61,6 +61,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     };
 
     // Function sending the message to the server if there is a connection.
+    // The function is asynchronous so that it does not block the other operations on the thread.
     const sendMessage = async msg => {
         // It creates a copy of the message so that the message from the buffer have the data attribute unstringlified
         const copyMsg = Object.assign({}, msg);
@@ -184,20 +185,23 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
             if (CUSTOM_ERROR_CODES.includes(closeEvent.code)) {
                 return;
             }
-            reconnectTimeout = setTimeout(() => {
-                reconnectAttempts++;
 
-                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                    trace.connect(isBreakoutRoom);
-                }
-            }, getTimeout(reconnectAttempts));
+            if (reconnectSpentTime < MAX_RECONNECT_TIME) {
+                const reconnectTimeoutTimeCandidate = getTimeout(reconnectSpentTime);
+                const reconnectTimeoutTime = reconnectSpentTime + reconnectTimeoutTimeCandidate < MAX_RECONNECT_TIME
+                    ? reconnectTimeoutTimeCandidate
+                    : MAX_RECONNECT_TIME - reconnectSpentTime;
+
+                reconnectSpentTime += reconnectTimeoutTime;
+                reconnectTimeout = setTimeout(() => trace.connect(isBreakoutRoom), reconnectTimeoutTime);
+            }
         };
 
         connection.onopen = function() {
             keepAliveInterval = setInterval(trace.keepAlive, pingInterval);
         };
 
-        connection.onmessage = function(msg) {
+        connection.onmessage = async function(msg) {
             const { type, body } = JSON.parse(msg.data);
 
             // if the server sends back the last sequence number that it has been received.
@@ -224,9 +228,11 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
                 // this happens when the connection is established
                 if (state === 'initial') {
                     reconnectTimeout && clearTimeout(reconnectTimeout);
-                    reconnectAttempts = 0;
+                    reconnectSpentTime = 0;
                     canSendMessage = true;
-                    buffer.forEach(entry => sendMessage(entry));
+                    for (let i = 0; i < buffer.length; i++) {
+                        await sendMessage(buffer[i]);
+                    }
                 }
             }
         };
