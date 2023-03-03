@@ -61,9 +61,8 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
     };
 
     // Function sending the message to the server if there is a connection.
-    // The function is asynchronous so that it does not block the other operations on the thread.
-    const sendMessage = async msg => {
-        // It creates a copy of the message so that the message from the buffer have the data attribute unstringlified
+    const sendMessage = msg => {
+        // It creates a copy of the message so that the message from the buffer have the data attribute unstringified
         const copyMsg = Object.assign({}, msg);
 
         if (copyMsg.type !== 'identity' && copyMsg.data) {
@@ -154,7 +153,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
         connection && connection.close(CONFERENCE_LEAVE_CODE);
     };
 
-    trace.connect = function(isBreakoutRoom) {
+    trace.connect = function(isBreakoutRoom, isReconnect = false) {
         if (isBreakoutRoom && !parentStatsSessionId) {
             parentStatsSessionId = statsSessionId;
         }
@@ -169,7 +168,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
         }
 
         connection = new WebSocket(
-            `${endpoint}/${meetingFqn}?statsSessionId=${statsSessionId}`,
+            `${endpoint}/${meetingFqn}?statsSessionId=${statsSessionId}&isReconnect=${isReconnect}`,
             protocolVersion,
             { headers: { 'User-Agent': navigator.userAgent } }
         );
@@ -193,7 +192,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
                     : MAX_RECONNECT_TIME - reconnectSpentTime;
 
                 reconnectSpentTime += reconnectTimeoutTime;
-                reconnectTimeout = setTimeout(() => trace.connect(isBreakoutRoom), reconnectTimeoutTime);
+                reconnectTimeout = setTimeout(() => trace.connect(isBreakoutRoom, true), reconnectTimeoutTime);
             }
         };
 
@@ -231,7 +230,7 @@ export default function({ endpoint, meetingFqn, onCloseCallback, useLegacy, obfu
                     reconnectSpentTime = 0;
                     canSendMessage = true;
                     for (let i = 0; i < buffer.length; i++) {
-                        await sendMessage(buffer[i]);
+                        sendMessage(buffer[i]);
                     }
                 }
             }
